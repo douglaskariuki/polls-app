@@ -18,6 +18,13 @@ var connections = [];
 var title = "Untitled presentation";
 var audience = [];
 var speaker = {};
+var currentQuestion = false;
+var results = {
+    a: 0,
+    b: 0,
+    c: 0
+}
+
 
 io.on("connection", (socket) => {
     socketId = socket.id;
@@ -33,26 +40,6 @@ io.on("connection", (socket) => {
     // receive msg from client
     socket.on("frm client", (data) => {
         console.log(data.client)
-    })
-
-    socket.emit("welcome", {
-        title,
-        audience,
-        speaker: speaker.name,
-        questions
-    })
-
-    socket.on("start", (payload) => {
-        title = payload.title;
-
-        speaker.name = payload.name;
-        speaker.id = socket.id;
-        speaker.type = 'speaker';
-        socket.emit("joined", speaker);
-
-        io.sockets.emit("start", { title, speaker: speaker.name });
-        console.log(`Presentation started, 
-            title ${title}, by ${speaker.name} `)
     })
 
     // join new client
@@ -71,19 +58,52 @@ io.on("connection", (socket) => {
         // broadcast to every connected socket
         io.sockets.emit('audience', audience);
 
-        console.log(`New member, ${newMember.name}, ID, ${newMember.id}`)
+        console.log(`New member, ${payload.name}, ID, ${socketId}`)
     })
 
-    
+    socket.on("start", (payload) => {
+        title = payload.title;
+
+        speaker.id = socketId;
+        speaker.name = payload.name;
+        speaker.type = 'speaker';
+        socket.emit("joined", speaker);
+
+        io.sockets.emit("started", { title, speaker: speaker.name });
+        console.log(`Presentation started, 
+            title ${title}, by ${speaker.name} `)
+    })
+
+    socket.on("ask", (question) => {
+        currentQuestion = question;
+        results = {a:0, b:0, c:0}
+        io.sockets.emit("asked", currentQuestion);
+        console.log(`Question asked, ${question.q}`)
+    })
+
+    socket.on("answer", (payload) => {
+        results[payload.choice]++;
+        io.sockets.emit("results", results)
+        console.log(`Answer - ${payload.choice}, ${results}`)
+    })
+
+    socket.emit("welcome", {
+        title,
+        audience,
+        speaker: speaker.name,
+        questions,
+        currentQuestion,
+        results
+    })
 
     // handle disconnects
     socket.on("disconnect", () => {
-        var member = _.findWhere(audience, {id: socket.id});
+        var member = _.findWhere(audience, {id: socketId});
         if(member){
             audience.splice(audience.indexOf(member), 1);
             io.sockets.emit("audience", audience)
             console.log(`${member.name} Left, ${audience.length} members remaining`)
-        } else if (socket.id === speaker.id) {
+        } else if (socketId === speaker.id) {
             console.log(`Speaker ${speaker.name} Left, Presentation ${title} is over`);
 
             speaker = {};
